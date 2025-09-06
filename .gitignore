@@ -1,0 +1,15 @@
+# Archivos de sistema
+.DS_Store
+Thumbs.db
+
+# Dependencias y caches comunes
+node_modules/
+dist/
+build/
+.cache/
+
+# Archivos temporales
+*.log
+*.tmp
+*.swp
+*.zip
