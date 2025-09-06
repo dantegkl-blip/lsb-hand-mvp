@@ -1,0 +1,19 @@
+Archivo: netlify.toml
+```toml
+# Sitio estático simple: publicar desde la raíz
+[build]
+  publish = "."
+
+# Headers para permitir camera/mic en iframes si lo incrustas en otros orígenes
+# y para document policy hints
+[[headers]]
+  for = "/*"
+  [headers.values]
+    Permissions-Policy = "camera=(), microphone=()"
+
+# Nota:
+# - Los navegadores pedirán permiso de cámara de todos modos.
+# - Si necesitas permitir uso de cámara dentro de un iframe en otro dominio específico,
+#   deberás servir el contenido con headers más permisivos desde ese dominio
+#   y el contenedor debe incluir allow="camera; microphone" en el iframe:
+#   <iframe src="..." allow="camera; microphone"></iframe>

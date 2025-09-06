@@ -1,0 +1,204 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>LSB MVP - Detección de mano (MediaPipe)</title>
+  <meta name="description" content="Prototipo MVP: detección de mano con MediaPipe Hands en el navegador. Heurística para palma abierta (hola). Listo para Netlify." />
+  <style>
+    :root{--bg:#0f1724;--panel:#0b1220;--accent:#7dd3fc;--ok:#16a34a;--bad:#ef4444}
+    *{box-sizing:border-box}
+    body{font-family:Inter,system-ui,Segoe UI,Roboto,Arial,sans-serif;margin:0;background:linear-gradient(180deg,#071029 0%,#071827 100%);color:#e6eef8;min-height:100vh;display:flex;align-items:flex-start;justify-content:center;padding:20px}
+    .wrap{width:100%;max-width:1100px;background:rgba(255,255,255,0.02);border-radius:12px;padding:18px;box-shadow:0 6px 30px rgba(2,6,23,0.6)}
+    h1{margin:0 0 10px;font-size:20px}
+    .grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+    .video-card{background:rgba(255,255,255,0.02);padding:12px;border-radius:10px}
+    .stage{position:relative;aspect-ratio:4/3;background:#000;border-radius:8px;overflow:hidden}
+    video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+    canvas{position:absolute;inset:0;width:100%;height:100%}
+    .controls{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+    button{background:var(--accent);color:#04202b;border:none;padding:8px 12px;border-radius:8px;cursor:pointer;font-weight:600}
+    button.ghost{background:transparent;border:1px solid rgba(255,255,255,0.12);color:#cfeffd}
+    .panel{background:linear-gradient(180deg,rgba(255,255,255,0.02),rgba(255,255,255,0.01));padding:14px;border-radius:10px}
+    .status{font-weight:700;padding:8px 10px;border-radius:8px;display:inline-block}
+    .ok{background:rgba(22,163,74,0.14);color:var(--ok)}
+    .bad{background:rgba(239,68,68,0.12);color:var(--bad)}
+    .info{font-size:14px;line-height:1.5;color:#cfeffd;margin-top:10px}
+    pre{background:#051022;padding:8px;border-radius:6px;overflow:auto;max-height:220px}
+    .small{font-size:13px;opacity:0.9}
+    .footer{margin-top:10px;font-size:12px;opacity:.8}
+    @media (max-width: 900px){
+      .grid{grid-template-columns:1fr}
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>LSB — MVP: detección de mano con MediaPipe (Netlify‑ready)</h1>
+
+    <div class="grid">
+      <div class="video-card">
+        <div class="stage">
+          <video id="video" playsinline muted></video>
+          <canvas id="outputCanvas" width="640" height="480"></canvas>
+        </div>
+        <div class="controls">
+          <button id="btnStart">Iniciar cámara</button>
+          <button id="btnStop" class="ghost">Detener</button>
+          <button id="btnDownload" class="ghost">Descargar landmarks</button>
+        </div>
+        <div style="margin-top:10px">
+          <span class="small">Objetivo de la prueba: <b>palma abierta ("hola")</b>. La heurística reconoce palma abierta cuando 4 o más dedos están extendidos.</span>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div>Feedback: <span id="feedback" class="status bad">Lista — inicia la cámara</span></div>
+        <div class="info" id="explain">
+          Esta demo usa <strong>MediaPipe Hands</strong> en el navegador para obtener 21 landmarks. La clasificación es una <em>heurística</em> simple: cuenta dedos extendidos y, si hay 4 o 5, considera "palma abierta".
+        </div>
+
+        <hr style="margin:12px 0;border:none;border-top:1px solid rgba(255,255,255,0.08)" />
+        <div>
+          <b>Último resultado:</b>
+          <pre id="lastResult">No hay datos aún.</pre>
+        </div>
+        <div class="footer">
+          Privacidad: el procesamiento es local en tu navegador. El botón “Descargar landmarks” guarda solo las coordenadas (sin vídeo).
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- MediaPipe libs (CDN) -->
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js"></script>
+
+  <script>
+    let camera = null;
+    let lastLandmarks = null;
+
+    const videoElement = document.getElementById('video');
+    const canvasElement = document.getElementById('outputCanvas');
+    const canvasCtx = canvasElement.getContext('2d');
+    const feedbackEl = document.getElementById('feedback');
+    const lastResultEl = document.getElementById('lastResult');
+
+    // Ajuste responsivo del canvas al tamaño del contenedor (mantiene 640x480 de buffer)
+    function resizeCanvasToDisplaySize() {
+      const rect = canvasElement.getBoundingClientRect();
+      canvasElement.style.width = rect.width + 'px';
+      canvasElement.style.height = rect.height + 'px';
+    }
+    new ResizeObserver(resizeCanvasToDisplaySize).observe(canvasElement);
+
+    // MediaPipe Hands
+    const hands = new Hands({ locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}` });
+
+    hands.setOptions({
+      maxNumHands: 1,
+      modelComplexity: 1,
+      minDetectionConfidence: 0.7,
+      minTrackingConfidence: 0.5
+    });
+
+    hands.onResults(onResults);
+
+    function startCamera(){
+      if (camera) return;
+      camera = new Camera(videoElement, {
+        onFrame: async () => { await hands.send({ image: videoElement }); },
+        width: 640,
+        height: 480
+      });
+      camera.start();
+      feedbackSet('bad', 'Detectando...');
+    }
+
+    async function stopCamera(){
+      if (!camera) return;
+      await camera.stop();
+      camera = null;
+      feedbackSet('bad', 'Cámara detenida');
+      canvasCtx.clearRect(0,0,canvasElement.width,canvasElement.height);
+      lastResultEl.textContent = 'No hay datos aún.';
+      lastLandmarks = null;
+    }
+
+    document.getElementById('btnStart').addEventListener('click', startCamera);
+    document.getElementById('btnStop').addEventListener('click', stopCamera);
+
+    document.getElementById('btnDownload').addEventListener('click', ()=>{
+      if(!lastLandmarks) return alert('No hay landmarks guardados aún. Inicia la cámara y haz un gesto.');
+      const data = {timestamp: Date.now(), landmarks: lastLandmarks};
+      const blob = new Blob([JSON.stringify(data, null, 2)], {type:'application/json'});
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a'); a.href = url; a.download = 'landmarks-lsb-sample.json'; a.click();
+      URL.revokeObjectURL(url);
+    });
+
+    function feedbackSet(type, text){
+      feedbackEl.className = 'status ' + (type === 'ok' ? 'ok' : 'bad');
+      feedbackEl.textContent = text;
+    }
+
+    function onResults(results){
+      // Redimensiona el lienzo de dibujo de salida
+      canvasCtx.save();
+      canvasCtx.clearRect(0,0,canvasElement.width,canvasElement.height);
+      canvasCtx.drawImage(results.image, 0, 0, canvasElement.width, canvasElement.height);
+
+      if(results.multiHandLandmarks && results.multiHandLandmarks.length > 0){
+        const lm = results.multiHandLandmarks[0];
+
+        // Dibujo
+        drawConnectors(canvasCtx, lm, HAND_CONNECTIONS, {color: '#00FFD1', lineWidth:2});
+        drawLandmarks(canvasCtx, lm, {color: '#FF007C', lineWidth:1});
+
+        // Clasificación por heurística
+        const classification = classifyHand(lm, canvasElement.width, canvasElement.height);
+        lastLandmarks = lm.map(p => ({x:p.x, y:p.y, z:p.z}));
+        const info = {
+          class: classification.label,
+          score: Number(classification.score.toFixed(2)),
+          extendedFingers: classification.extended
+        };
+        lastResultEl.textContent = JSON.stringify(info, null, 2);
+
+        if(classification.label === 'palma_abierta'){
+          feedbackSet('ok', '¡Correcto — palma abierta! (simulando "hola")');
+        } else {
+          feedbackSet('bad', 'Intenta de nuevo — no detecto palma abierta');
+        }
+      } else {
+        lastResultEl.textContent = 'No se detecta mano.';
+        feedbackSet('bad', 'Buscando mano…');
+      }
+
+      canvasCtx.restore();
+    }
+
+    // Heurística: dedos extendidos si tip está más lejos de la muñeca que su PIP
+    function classifyHand(landmarks, width, height){
+      const pts = landmarks.map(p => ({x: p.x * width, y: p.y * height, z: p.z}));
+      const wrist = pts[0];
+      const tipIdx = [4,8,12,16,20];
+      const pipIdx = [2,6,10,14,18];
+      let extended = 0;
+
+      for(let i=0;i<5;i++){
+        const tip = pts[tipIdx[i]];
+        const pip = pts[pipIdx[i]];
+        const dTip = Math.hypot(tip.x - wrist.x, tip.y - wrist.y);
+        const dPip = Math.hypot(pip.x - wrist.x, pip.y - wrist.y);
+        if(dTip > dPip * 1.05) extended++;
+      }
+
+      const label = extended >= 4 ? 'palma_abierta' : (extended === 0 ? 'puño' : 'parcial');
+      const score = Math.min(1, extended/5);
+      return {label, score, extended};
+    }
+  </script>
+</body>
+</html>
