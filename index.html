@@ -1,51 +1,22 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="es">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>LSB — MVP Dactilología y Saludos</title>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>MVP LSB - Detección de Manos</title>
   <link rel="stylesheet" href="style.css" />
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js"></script>
 </head>
 <body>
-  <main class="wrap">
-    <header>
-      <h1>LSB — Dactilología y Saludos (MVP)</h1>
-      <p class="muted">Basado en el documento del curso (alfabeto y saludos). Prototipo heurístico para reconocimiento en tiempo real. :contentReference[oaicite:1]{index=1}</p>
-    </header>
+  <h1>Lengua de Señas Boliviana (MVP)</h1>
+  <p>Activa tu cámara e intenta reproducir los gestos.</p>
 
-    <section class="grid">
-      <div class="video-card">
-        <div class="video-wrap">
-          <video id="video" playsinline muted></video>
-          <canvas id="outputCanvas" width="640" height="480"></canvas>
-        </div>
+  <video class="input_video" autoplay></video>
+  <canvas class="output_canvas"></canvas>
 
-        <div class="controls">
-          <button id="btnStart">Iniciar cámara</button>
-          <button id="btnStop" class="ghost">Detener</button>
-          <button id="btnDownload" class="ghost">Descargar landmarks</button>
-        </div>
-
-        <div class="hint small">Consejo: buena iluminación, mano sin anillos, muévela en el plano de la cámara.</div>
-      </div>
-
-      <aside class="panel">
-        <div><strong>Detección:</strong> <span id="detected" class="status bad">Sin iniciar</span></div>
-        <div class="meta"><strong>Tipo:</strong> <span id="type">—</span>  <strong>Score:</strong> <span id="score">—</span></div>
-        <hr/>
-        <div>
-          <b>Último resultado bruto (landmarks):</b>
-          <pre id="lastResult">—</pre>
-        </div>
-        <div class="notes small">
-          Este detector usa reglas heurísticas basadas en la dactilología de LSB y los saludos descritos en la presentación. Para producción se recomienda entrenar un modelo con el dataset LSB real.
-        </div>
-      </aside>
-    </section>
-  </main>
+  <div id="feedback">Esperando gesto...</div>
 
   <script src="script.js"></script>
 </body>
