@@ -3,198 +3,50 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>LSB MVP Gamificado</title>
-  <style>
-    :root{--bg:#0f1724;--panel:#0b1220;--accent:#7dd3fc;--ok:#16a34a;--bad:#ef4444}
-    *{box-sizing:border-box}
-    body{font-family:Inter,system-ui,Segoe UI,Roboto,Arial,sans-serif;margin:0;background:linear-gradient(180deg,#071029 0%,#071827 100%);color:#e6eef8;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px}
-    .wrap{width:100%;max-width:900px;background:rgba(255,255,255,0.02);border-radius:12px;padding:18px;box-shadow:0 6px 30px rgba(2,6,23,0.6);text-align:center}
-    h1{margin:0 0 10px;font-size:24px}
-    .stage{position:relative;aspect-ratio:4/3;background:#000;border-radius:8px;overflow:hidden;margin-top:12px}
-    video,canvas{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
-    button{background:var(--accent);color:#04202b;border:none;padding:10px 16px;border-radius:8px;cursor:pointer;font-weight:600;margin:6px}
-    .status{font-weight:700;padding:8px 10px;border-radius:8px;display:inline-block;margin-top:10px}
-    .ok{background:rgba(22,163,74,0.14);color:var(--ok)}
-    .bad{background:rgba(239,68,68,0.12);color:var(--bad)}
-    .info{font-size:15px;line-height:1.6;color:#cfeffd;margin-top:14px}
-    .hidden{display:none}
-  </style>
-</head>
-<body>
-  <div class="wrap">
-    <h1 id="title">Bienvenido al MVP de Lengua de Señas Boliviana</h1>
-    <p id="intro" class="info">
-      En este prototipo aprenderás tus primeras señas. Usa tu cámara para que podamos detectar tus gestos. 
-      Haz clic en <b>"Comenzar"</b> para iniciar.
-    </p>
-    <div id="controls">
-      <button id="btnStart">Comenzar</button>
-    </div>
-
-    <div id="game" class="hidden">
-      <div class="stage">
-        <video id="video" playsinline muted></video>
-        <canvas id="outputCanvas" width="640" height="480"></canvas>
-      </div>
-      <div id="instruction" class="info">Haz la seña de <b>hola</b> (palma abierta).</div>
-      <div id="feedback" class="status bad">Esperando gesto...</div>
-      <div id="progress" class="info"></div>
-      <button id="btnNext" class="hidden">Siguiente</button>
-    </div>
-  </div>
-
-  <!-- MediaPipe -->
+  <title>LSB — MVP Dactilología y Saludos</title>
+  <link rel="stylesheet" href="style.css" />
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js"></script>
+</head>
+<body>
+  <main class="wrap">
+    <header>
+      <h1>LSB — Dactilología y Saludos (MVP)</h1>
+      <p class="muted">Basado en el documento del curso (alfabeto y saludos). Prototipo heurístico para reconocimiento en tiempo real. :contentReference[oaicite:1]{index=1}</p>
+    </header>
 
-  <script>
-    // --- Estados del juego ---
-    const stages = [
-      {label:"palma_abierta", text:"Haz la seña de <b>HOLA</b> (palma abierta)."},
-      {label:"puño", text:"Haz la seña de <b>ADIOS</b> (puño cerrado)."},
-      {label:"reto_nombre", text:"Ahora, deletrea tu <b>nombre</b> letra por letra con las señas."}
-    ];
-    let currentStage = 0;
-    let awaitingGesture = true;
-    let currentLetterIndex = 0;
-    let playerName = prompt("¿Cuál es tu nombre? (usaremos las letras iniciales de tu nombre)") || "ANA";
-    playerName = playerName.toUpperCase();
+    <section class="grid">
+      <div class="video-card">
+        <div class="video-wrap">
+          <video id="video" playsinline muted></video>
+          <canvas id="outputCanvas" width="640" height="480"></canvas>
+        </div>
 
-    // --- Elementos DOM ---
-    const btnStart = document.getElementById("btnStart");
-    const btnNext = document.getElementById("btnNext");
-    const intro = document.getElementById("intro");
-    const gameDiv = document.getElementById("game");
-    const instructionEl = document.getElementById("instruction");
-    const feedbackEl = document.getElementById("feedback");
-    const progressEl = document.getElementById("progress");
+        <div class="controls">
+          <button id="btnStart">Iniciar cámara</button>
+          <button id="btnStop" class="ghost">Detener</button>
+          <button id="btnDownload" class="ghost">Descargar landmarks</button>
+        </div>
 
-    const videoElement = document.getElementById('video');
-    const canvasElement = document.getElementById('outputCanvas');
-    const canvasCtx = canvasElement.getContext('2d');
+        <div class="hint small">Consejo: buena iluminación, mano sin anillos, muévela en el plano de la cámara.</div>
+      </div>
 
-    let camera = null;
+      <aside class="panel">
+        <div><strong>Detección:</strong> <span id="detected" class="status bad">Sin iniciar</span></div>
+        <div class="meta"><strong>Tipo:</strong> <span id="type">—</span>  <strong>Score:</strong> <span id="score">—</span></div>
+        <hr/>
+        <div>
+          <b>Último resultado bruto (landmarks):</b>
+          <pre id="lastResult">—</pre>
+        </div>
+        <div class="notes small">
+          Este detector usa reglas heurísticas basadas en la dactilología de LSB y los saludos descritos en la presentación. Para producción se recomienda entrenar un modelo con el dataset LSB real.
+        </div>
+      </aside>
+    </section>
+  </main>
 
-    // --- MediaPipe Hands ---
-    const hands = new Hands({locateFile: file => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`});
-    hands.setOptions({
-      maxNumHands:1, modelComplexity:1, minDetectionConfidence:0.7, minTrackingConfidence:0.5
-    });
-    hands.onResults(onResults);
-
-    btnStart.onclick = () => {
-      intro.classList.add("hidden");
-      btnStart.classList.add("hidden");
-      gameDiv.classList.remove("hidden");
-      startCamera();
-      setStage(0);
-    };
-
-    btnNext.onclick = () => {
-      currentStage++;
-      if(currentStage < stages.length){
-        setStage(currentStage);
-      } else {
-        instructionEl.innerHTML = "¡Felicidades! Completaste el reto 🎉";
-        feedbackSet("ok","Has terminado.");
-        btnNext.classList.add("hidden");
-      }
-    };
-
-    function setStage(i){
-      const stage = stages[i];
-      instructionEl.innerHTML = stage.text;
-      feedbackSet("bad","Esperando gesto...");
-      btnNext.classList.add("hidden");
-      awaitingGesture = true;
-      if(stage.label === "reto_nombre"){
-        currentLetterIndex = 0;
-        showNextLetter();
-      }
-    }
-
-    function showNextLetter(){
-      if(currentLetterIndex >= playerName.length){
-        feedbackSet("ok","¡Perfecto! Has deletreado tu nombre.");
-        btnNext.classList.remove("hidden");
-        return;
-      }
-      const letter = playerName[currentLetterIndex];
-      instructionEl.innerHTML = `Muestra la seña de la letra <b>${letter}</b>`;
-      feedbackSet("bad","Esperando gesto...");
-      awaitingGesture = true;
-    }
-
-    function feedbackSet(type,text){
-      feedbackEl.className = "status " + (type==="ok"?"ok":"bad");
-      feedbackEl.innerHTML = text;
-    }
-
-    function startCamera(){
-      if(camera) return;
-      camera = new Camera(videoElement, {
-        onFrame: async()=>{await hands.send({image:videoElement});},
-        width:640,height:480
-      });
-      camera.start();
-    }
-
-    function onResults(results){
-      canvasCtx.save();
-      canvasCtx.clearRect(0,0,canvasElement.width,canvasElement.height);
-      canvasCtx.drawImage(results.image,0,0,canvasElement.width,canvasElement.height);
-
-      if(results.multiHandLandmarks && results.multiHandLandmarks.length>0){
-        const lm = results.multiHandLandmarks[0];
-        drawConnectors(canvasCtx,lm,HAND_CONNECTIONS,{color:'#00FFD1',lineWidth:2});
-        drawLandmarks(canvasCtx,lm,{color:'#FF007C',lineWidth:1});
-        const classification = classifyHand(lm,canvasElement.width,canvasElement.height);
-
-        if(awaitingGesture){
-          if(currentStage === 0 && classification.label==="palma_abierta"){
-            feedbackSet("ok","¡Perfecto! Esa es la seña de HOLA.");
-            btnNext.classList.remove("hidden");
-            awaitingGesture=false;
-          }
-          else if(currentStage === 1 && classification.label==="puño"){
-            feedbackSet("ok","¡Bien! Esa es la seña de ADIOS.");
-            btnNext.classList.remove("hidden");
-            awaitingGesture=false;
-          }
-          else if(currentStage === 2){
-            // Simulación: para demo usaremos palma_abierta como "cualquier letra correcta"
-            if(classification.label==="palma_abierta"){
-              feedbackSet("ok",`¡Perfecto! Reconocida la letra ${playerName[currentLetterIndex]}.`);
-              currentLetterIndex++;
-              awaitingGesture=false;
-              setTimeout(showNextLetter,1500);
-            } else {
-              feedbackSet("bad","Casi... intenta de nuevo.");
-            }
-          }
-        }
-      }
-      canvasCtx.restore();
-    }
-
-    // Heurística dedos extendidos
-    function classifyHand(landmarks,width,height){
-      const pts=landmarks.map(p=>({x:p.x*width,y:p.y*height,z:p.z}));
-      const wrist=pts[0];
-      const tipIdx=[4,8,12,16,20];
-      const pipIdx=[2,6,10,14,18];
-      let extended=0;
-      for(let i=0;i<5;i++){
-        const tip=pts[tipIdx[i]];
-        const pip=pts[pipIdx[i]];
-        const dTip=Math.hypot(tip.x-wrist.x,tip.y-wrist.y);
-        const dPip=Math.hypot(pip.x-wrist.x,pip.y-wrist.y);
-        if(dTip>dPip*1.05) extended++;
-      }
-      const label=extended>=4?"palma_abierta":(extended===0?"puño":"parcial");
-      return {label,extended};
-    }
-  </script>
+  <script src="script.js"></script>
 </body>
 </html>
