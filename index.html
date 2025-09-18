@@ -3,202 +3,473 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>LSB MVP - Detección de mano (MediaPipe)</title>
-  <meta name="description" content="Prototipo MVP: detección de mano con MediaPipe Hands en el navegador. Heurística para palma abierta (hola). Listo para Netlify." />
+  <title>LSB — Actividad mejorada (MediaPipe)</title>
   <style>
-    :root{--bg:#0f1724;--panel:#0b1220;--accent:#7dd3fc;--ok:#16a34a;--bad:#ef4444}
-    *{box-sizing:border-box}
-    body{font-family:Inter,system-ui,Segoe UI,Roboto,Arial,sans-serif;margin:0;background:linear-gradient(180deg,#071029 0%,#071827 100%);color:#e6eef8;min-height:100vh;display:flex;align-items:flex-start;justify-content:center;padding:20px}
-    .wrap{width:100%;max-width:1100px;background:rgba(255,255,255,0.02);border-radius:12px;padding:18px;box-shadow:0 6px 30px rgba(2,6,23,0.6)}
-    h1{margin:0 0 10px;font-size:20px}
-    .grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}
-    .video-card{background:rgba(255,255,255,0.02);padding:12px;border-radius:10px}
-    .stage{position:relative;aspect-ratio:4/3;background:#000;border-radius:8px;overflow:hidden}
-    video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
-    canvas{position:absolute;inset:0;width:100%;height:100%}
-    .controls{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
-    button{background:var(--accent);color:#04202b;border:none;padding:8px 12px;border-radius:8px;cursor:pointer;font-weight:600}
-    button.ghost{background:transparent;border:1px solid rgba(255,255,255,0.12);color:#cfeffd}
-    .panel{background:linear-gradient(180deg,rgba(255,255,255,0.02),rgba(255,255,255,0.01));padding:14px;border-radius:10px}
-    .status{font-weight:700;padding:8px 10px;border-radius:8px;display:inline-block}
-    .ok{background:rgba(22,163,74,0.14);color:var(--ok)}
-    .bad{background:rgba(239,68,68,0.12);color:var(--bad)}
-    .info{font-size:14px;line-height:1.5;color:#cfeffd;margin-top:10px}
-    pre{background:#051022;padding:8px;border-radius:6px;overflow:auto;max-height:220px}
-    .small{font-size:13px;opacity:0.9}
-    .footer{margin-top:10px;font-size:12px;opacity:.8}
-    @media (max-width: 900px){
-      .grid{grid-template-columns:1fr}
+    :root{
+      --bg:#0b1220;--card:#111a2b;--ink:#e6f0ff;--muted:#9db0d1;--brand:#5be0c7;--warn:#ffce6b;--err:#ff7a86;
     }
+    *{box-sizing:border-box} body{margin:0;background:linear-gradient(180deg,#0b1220,#0a1630);color:var(--ink);font:16px/1.4 Inter,system-ui,Segoe UI,Roboto,Helvetica,Arial,sans-serif}
+    header{padding:16px 20px;border-bottom:1px solid #20304b}
+    h1{font-size:20px;margin:0}
+    main{max-width:1100px;margin:0 auto;padding:16px}
+    .layout{display:grid;grid-template-columns:1.1fr .9fr;gap:16px}
+    .card{background:var(--card);border:1px solid #20304b;border-radius:12px;padding:12px}
+    .toolbar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:8px}
+    select,button{background:#0f2036;color:var(--ink);border:1px solid #2a3f61;border-radius:10px;padding:10px 12px}
+    button.primary{background:var(--brand);color:#051017;border:none;font-weight:700}
+    button:disabled{opacity:.6}
+    #video{width:100%;border-radius:10px;background:#000}
+    #canvas{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
+    .stage{position:relative;aspect-ratio:16/9;border-radius:10px;overflow:hidden}
+    .status{display:flex;gap:8px;flex-wrap:wrap}
+    .chip{padding:6px 10px;border-radius:999px;background:#0f2036;border:1px solid #2a3f61;color:var(--muted)}
+    .chip.ok{border-color:#2a6c5f;background:#0d2a25;color:#9af1de}
+    .chip.warn{border-color:#6c5a2a;background:#2a230d;color:#ffe19f}
+    .chip.err{border-color:#6c2a37;background:#2a0d14;color:#ffb3bd}
+    .log{font-family:ui-monospace,Consolas,monospace;font-size:13px;max-height:180px;overflow:auto;background:#0a1527;border-radius:8px;padding:8px;border:1px solid #20304b}
+    .guide h3{margin:.2rem 0 .6rem 0}
+    .grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+    .tile{border:1px dashed #2a3f61;border-radius:10px;padding:8px}
+    .tile b{color:#bfe3ff}
+    footer{color:#89a7d1;padding:12px 20px;font-size:13px;opacity:.9}
+    a{color:#7feee0}
+    @media (max-width:900px){.layout{grid-template-columns:1fr}}
   </style>
-</head>
-<body>
-  <div class="wrap">
-    <h1>LSB — MVP: detección de mano con MediaPipe (Netlify‑ready)</h1>
-
-    <div class="grid">
-      <div class="video-card">
-        <div class="stage">
-          <video id="video" playsinline muted></video>
-          <canvas id="outputCanvas" width="640" height="480"></canvas>
-        </div>
-        <div class="controls">
-          <button id="btnStart">Iniciar cámara</button>
-          <button id="btnStop" class="ghost">Detener</button>
-          <button id="btnDownload" class="ghost">Descargar landmarks</button>
-        </div>
-        <div style="margin-top:10px">
-          <span class="small">Objetivo de la prueba: <b>palma abierta ("hola")</b>. La heurística reconoce palma abierta cuando 4 o más dedos están extendidos.</span>
-        </div>
-      </div>
-
-      <div class="panel">
-        <div>Feedback: <span id="feedback" class="status bad">Lista — inicia la cámara</span></div>
-        <div class="info" id="explain">
-          Esta demo usa <strong>MediaPipe Hands</strong> en el navegador para obtener 21 landmarks. La clasificación es una <em>heurística</em> simple: cuenta dedos extendidos y, si hay 4 o 5, considera "palma abierta".
-        </div>
-
-        <hr style="margin:12px 0;border:none;border-top:1px solid rgba(255,255,255,0.08)" />
-        <div>
-          <b>Último resultado:</b>
-          <pre id="lastResult">No hay datos aún.</pre>
-        </div>
-        <div class="footer">
-          Privacidad: el procesamiento es local en tu navegador. El botón “Descargar landmarks” guarda solo las coordenadas (sin vídeo).
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <!-- MediaPipe libs (CDN) -->
-  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
+  <!-- MediaPipe Hands + utils -->
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
+</head>
+<body>
+  <header>
+    <h1>LSB — Actividad guiada con IA (Mano)</h1>
+  </header>
+  <main>
+    <div class="layout">
+      <section class="card">
+        <div class="toolbar">
+          <label>Actividad:
+            <select id="mode">
+              <option value="dactilologia">Dactilología (abecedario)</option>
+              <option value="numeros">Números (1–5)</option>
+              <option value="saludos">Saludos (Hola / Adiós / Gracias / Por favor)</option>
+            </select>
+          </label>
+          <label>Objetivo:
+            <select id="target"></select>
+          </label>
+          <button id="btnStart" class="primary">Iniciar cámara</button>
+          <button id="btnStop">Detener</button>
+          <button id="btnDL">Descargar landmarks</button>
+        </div>
+        <div class="stage">
+          <video id="video" playsinline></video>
+          <canvas id="canvas"></canvas>
+        </div>
+        <div class="status" style="margin-top:8px">
+          <span class="chip" id="camStatus">Cámara: inactiva</span>
+          <span class="chip" id="handStatus">Mano: —</span>
+          <span class="chip" id="resultStatus">Resultado: —</span>
+        </div>
+        <div class="card" style="margin-top:10px">
+          <div class="log" id="log"></div>
+        </div>
+      </section>
 
-  <script>
-    let camera = null;
-    let lastLandmarks = null;
+      <aside class="card guide">
+        <h3>Objetivo actual</h3>
+        <div id="goalText" class="chip ok">Selecciona un objetivo</div>
+        <h3>Ayuda rápida</h3>
+        <div class="grid">
+          <div class="tile">
+            <b>Dactilología</b><br/>
+            - No se aceptará “palma abierta” como cualquier letra.<br/>
+            - Se evalúan dedos extendidos/ocultos, posición del pulgar y cruces (R).<br/>
+            - Letras con movimiento: J y Z (trazo).
+          </div>
+          <div class="tile">
+            <b>Saludos</b><br/>
+            Hola: mano “B” desde la sien hacia adelante.<br/>
+            Adiós: agitar lateral 2–3 veces.<br/>
+            Gracias: de barbilla hacia afuera.<br/>
+            Por favor: círculo sobre el pecho.
+          </div>
+          <div class="tile">
+            <b>Números</b><br/>
+            1–5 con palma hacia adentro.
+          </div>
+          <div class="tile">
+            Privacidad: todo el procesamiento es local en tu navegador.
+          </div>
+        </div>
+        <h3>Actividad en vivo (5 min)</h3>
+        <p>Prueba el MVP original aquí: <a href="https://polite-meerkat-a32846.netlify.app/" target="_blank" rel="noopener">https://polite-meerkat-a32846.netlify.app/</a></p>
+      </aside>
+    </div>
+  </main>
 
-    const videoElement = document.getElementById('video');
-    const canvasElement = document.getElementById('outputCanvas');
-    const canvasCtx = canvasElement.getContext('2d');
-    const feedbackEl = document.getElementById('feedback');
-    const lastResultEl = document.getElementById('lastResult');
+  <footer>
+    LSB MVP Gamificado — Detección de mano MediaPipe • Código de ejemplo mejorado para distinguir dactilología, números y saludos.
+  </footer>
 
-    // Ajuste responsivo del canvas al tamaño del contenedor (mantiene 640x480 de buffer)
-    function resizeCanvasToDisplaySize() {
-      const rect = canvasElement.getBoundingClientRect();
-      canvasElement.style.width = rect.width + 'px';
-      canvasElement.style.height = rect.height + 'px';
+<script>
+/* Utilidades de geometría sobre landmarks de MediaPipe (formato normalizado [0..1]) */
+function v(p){return {x:p.x,y:p.y,z:p.z}}
+function sub(a,b){return {x:a.x-b.x,y:a.y-b.y,z:(a.z||0)-(b.z||0)}}
+function dot(a,b){return a.x*b.x+a.y*b.y+(a.z||0)*(b.z||0)}
+function norm(a){return Math.hypot(a.x,a.y,a.z||0)}
+function angle(a,b,c){ // ángulo en b (a-b-c)
+  const ab=sub(a,b), cb=sub(c,b)
+  const cos=dot(ab,cb)/(norm(ab)*norm(cb)+1e-9)
+  return Math.acos(Math.max(-1,Math.min(1,cos)))
+}
+/* Detección de dedos extendidos/plegados:
+   Se considera extendido si el ángulo en la articulación proximal (PIP) es > 2.6 rad (~149°) y la punta está más lejos que el PIP desde la muñeca. */
+function fingerStates(lm){
+  const WR=lm[0]
+  const F={
+    thumb:[1,2,3,4],
+    index:[5,6,7,8],
+    middle:[9,10,11,12],
+    ring:[13,14,15,16],
+    pinky:[17,18,19,20],
+  }
+  function isExtended(ids){
+    const [mcp,pip,dip,tip]=ids.map(i=>lm[i])
+    const a=angle(mcp,pip,dip)
+    const b=angle(pip,dip,tip)
+    const d1=norm(sub(tip,WR)), d2=norm(sub(pip,WR))
+    return (a>2.6 && b>2.6 && d1>d2*0.95)
+  }
+  function thumbAcross(){
+    // pulgar sobre la palma: comprueba si tip del pulgar cruza hacia el eje de la palma (entre index MCP y pinky MCP)
+    const axisX=lm[17].x - lm[5].x
+    // mano derecha: axisX>0, izquierda: <0
+    // pulgar sobre dedos: proyección x del tip más cerca del centro de la palma
+    return Math.abs(lm[4].y - lm[9].y) < 0.08 && ((axisX>0 && lm[4].x>lm[3].x) || (axisX<0 && lm[4].x<lm[3].x))
+  }
+  return {
+    thumb:isExtended(F.thumb),
+    index:isExtended(F.index),
+    middle:isExtended(F.middle),
+    ring:isExtended(F.ring),
+    pinky:isExtended(F.pinky),
+    thumbAcross:thumbAcross(),
+  }
+}
+
+function palmFacingCamera(lm){
+  // normal aproximada de la palma usando triángulo (index_mcp, pinky_mcp, wrist)
+  const a=v(lm[5]), b=v(lm[17]), c=v(lm[0])
+  const n= cross(sub(a,c),sub(b,c))
+  // si el componente z de la normal es pequeño, palma lateral; queremos palma orientada a cámara (|nz| grande)
+  return Math.abs(n.z||0) > 0.04
+}
+function cross(a,b){return {x:a.y*b.z-a.z*b.y,y:a.z*b.x-a.x*b.z,z:a.x*b.y-a.y*b.x}}
+
+/* Heurísticas por letra (estáticas). Retorna string o null. */
+function classifyLetter(lm){
+  const f=fingerStates(lm)
+  const ext = (name)=>f[name]
+  // Reglas principales inspiradas en el módulo compartido
+  if(!palmFacingCamera(lm)) {
+    // algunas letras se permiten en lateral (G, H, P, Q)
+  }
+  // A: puño, pulgar recto al costado (no sobre los dedos)
+  if(!ext('index') && !ext('middle') && !ext('ring') && !ext('pinky')){
+    const thumbSide = !f.thumb && !f.thumbAcross // pulgar no extendido y no cruzado encima
+    if(thumbSide) return 'A'
+    // S: puño con pulgar sobre los dedos
+    if(f.thumbAcross) return 'S'
+    // M/N/T se distinguen por la posición del pulgar respecto a índices
+    // T: pulgar entre índice y medio (tip del pulgar y base índice en proyección x)
+    const tx=lm[4].x, ix=lm[5].x, mx=lm[9].x
+    if( (tx>Math.min(ix,mx) && tx<Math.max(ix,mx)) ) return 'T'
+    // N/M: pulgar bajo 2 o 3 dedos (usamos distancia vertical a las falanges)
+    const tY=lm[4].y
+    const overIndex = tY < lm[7].y
+    const overMiddle = tY < lm[11].y
+    const overRing = tY < lm[15].y
+    if(overIndex && overMiddle && overRing) return 'M'
+    if(overIndex && overMiddle && !overRing) return 'N'
+  }
+  // B: cuatro dedos extendidos, pulgar cruzado sobre la palma
+  if(ext('index') && ext('middle') && ext('ring') && ext('pinky') && !ext('thumb')){
+    return 'B'
+  }
+  // C: curvatura de dedos formando arco (punta más cerca de pulgar tip)
+  if(!ext('thumb') && ext('index') && ext('middle') && ext('ring') && ext('pinky')){
+    const d = dist(lm[8], lm[4])
+    const wide = dist(lm[5], lm[17])
+    if(d < wide*0.7) return 'C'
+  }
+  // D: índice arriba, otros recogidos, pulgar tocando medio/anular
+  if(ext('index') && !ext('middle') && !ext('ring') && !ext('pinky')){
+    if(dist(lm[4],lm[14]) < 0.09 || dist(lm[4],lm[13])<0.1) return 'D'
+  }
+  // E: dedos flexionados tipo garra (ninguno claramente extendido) pero pulgar visible lateral
+  if(!ext('index') && !ext('middle') && !ext('ring') && !ext('pinky') && f.thumb){
+    return 'E'
+  }
+  // F: círculo índice-pulgar + otros tres extendidos
+  if(ext('middle') && ext('ring') && ext('pinky') && !ext('index') && !ext('thumb')){
+    if(dist(lm[8],lm[4]) < 0.06) return 'F'
+  }
+  // G: índice y pulgar paralelos hacia el lado
+  if(!ext('middle') && !ext('ring') && !ext('pinky') && ext('index') && ext('thumb')){
+    // verificar paralelismo (ángulo pequeño entre segmentos)
+    const a = angle(lm[3], lm[4], lm[8])
+    if(a > 2.6) return 'G'
+  }
+  // H: índice y medio extendidos al lado, juntos
+  if(ext('index') && ext('middle') && !ext('ring') && !ext('pinky') && !ext('thumb')){
+    if(Math.abs(lm[8].y - lm[12].y) < 0.03) return 'H'
+  }
+  // I: meñique extendido solo
+  if(!ext('index') && !ext('middle') && !ext('ring') && ext('pinky') && !ext('thumb')) return 'I'
+  // K: índice+medio en V + pulgar entre ellos
+  if(ext('index') && ext('middle') && !ext('ring') && !ext('pinky') && ext('thumb')){
+    const mid = (lm[8].x + lm[12].x)/2
+    if( (lm[4].x-mid)*(lm[17].x-lm[5].x) < 0 ) return 'K'
+  }
+  // L: índice + pulgar a 90°
+  if(ext('index') && !ext('middle') && !ext('ring') && !ext('pinky') && ext('thumb')){
+    const a = angle(lm[8], lm[5], lm[4])
+    if(a>1.3 && a<2.2) return 'L'
+  }
+  // O: círculo con todos los dedos
+  if(!ext('thumb') && ext('index') && ext('middle') && ext('ring') && ext('pinky')){
+    const peri = dist(lm[8],lm[12])+dist(lm[12],lm[16])+dist(lm[16],lm[20])+dist(lm[20],lm[4])+dist(lm[4],lm[8])
+    if(peri < 1.7) return 'O'
+  }
+  // P/Q: variantes de K y G apuntando abajo
+  if(ext('index') && ext('middle') && ext('thumb') && !ext('ring') && !ext('pinky')){
+    if(isPointingDown(lm[8], lm[12], lm[0])) return 'P'
+  }
+  if(ext('index') && ext('thumb') && !ext('middle') && !ext('ring') && !ext('pinky')){
+    if(isPointingDown(lm[8], lm[4], lm[0])) return 'Q'
+  }
+  // R: índice y medio cruzados (proyección cercanos e intercambio en x)
+  if(ext('index') && ext('middle') && !ext('ring') && !ext('pinky') && !ext('thumb')){
+    if(Math.abs(lm[8].x - lm[12].x) < 0.015 && Math.abs(lm[8].y - lm[12].y) < 0.03) return 'R'
+  }
+  // U: índice y medio juntos hacia arriba
+  if(ext('index') && ext('middle') && !ext('ring') && !ext('pinky') && !ext('thumb')){
+    if(Math.abs(lm[8].x - lm[12].x) < 0.02) return 'U'
+  }
+  // V: índice y medio separados
+  if(ext('index') && ext('middle') && !ext('ring') && !ext('pinky') && !ext('thumb')){
+    if(Math.abs(lm[8].x - lm[12].x) > 0.05) return 'V'
+  }
+  // W: índice, medio, anular extendidos
+  if(ext('index') && ext('middle') && ext('ring') && !ext('pinky') && !ext('thumb')) return 'W'
+  // Y: pulgar + meñique
+  if(!ext('index') && !ext('middle') && !ext('ring') && ext('pinky') && ext('thumb')) return 'Y'
+  // X: índice en garfio
+  if(!ext('middle') && !ext('ring') && !ext('pinky') && !ext('thumb') && !isStraight(lm[5],lm[6],lm[8])) return 'X'
+
+  return null
+}
+
+function isStraight(a,b,c){ return angle(a,b,c) > 2.6 }
+function dist(a,b){ const dx=a.x-b.x, dy=a.y-b.y; return Math.hypot(dx,dy) }
+function isPointingDown(p1,p2,ref){ return ((p1.y+p2.y)/2 - ref.y) > 0.1 }
+
+/* Saludos y frases: detección por movimiento */
+const motionBuffer=[]
+const MAX_BUF=12 // ~0.4s a 30fps
+function addMotion(pt){ motionBuffer.push(pt); if(motionBuffer.length>60) motionBuffer.shift() }
+
+function detectHola(){
+  // trayectoria desde sien (aprox. zona cercana a templo: usamos index knuckle y posición relativa cabeza estimada por altura)
+  if(motionBuffer.length<10) return false
+  const first = motionBuffer[0], last = motionBuffer[motionBuffer.length-1]
+  const dx = last.x - first.x, dy = last.y - first.y
+  const movedForward = dy < -0.04 || dx > 0.04 || dx < -0.04
+  // además requiere palma abierta (4 o 5 dedos) al inicio y al final
+  return movedForward && recentOpenPalmCount(5,4)>=2
+}
+function detectAdios(){
+  if(motionBuffer.length<15) return false
+  // contar cambios de dirección en X (vaivén)
+  let changes=0
+  for(let i=2;i<motionBuffer.length;i++){
+    const dx1=motionBuffer[i-1].x - motionBuffer[i-2].x
+    const dx2=motionBuffer[i].x - motionBuffer[i-1].x
+    if(Math.sign(dx1) !== Math.sign(dx2) && Math.abs(dx1)>0.008 && Math.abs(dx2)>0.008) changes++
+  }
+  return changes>=2 && recentOpenPalmCount(8,4)>=4
+}
+function detectGracias(){
+  // de barbilla hacia adelante (descenso leve)
+  if(motionBuffer.length<10) return false
+  const first = motionBuffer[0], last = motionBuffer[motionBuffer.length-1]
+  return (last.y - first.y) > 0.04 && recentOpenPalmCount(6,3)>=2
+}
+function detectPorFavor(){
+  // pequeño círculo en pecho: detecta giro horario/antihorario mediante área firmada
+  if(motionBuffer.length<16) return false
+  let area=0
+  for(let i=1;i<motionBuffer.length;i++){
+    const a=motionBuffer[i-1], b=motionBuffer[i]
+    area += (a.x*b.y - b.x*a.y)
+  }
+  return Math.abs(area) > 0.02 && recentOpenPalmCount(10,4)>=3
+}
+function recentOpenPalmCount(k, minExtended){
+  // cuenta frames recientes con >= minExtended dedos extendidos
+  let c=0
+  for(let i=Math.max(0,statesHistory.length-k); i<statesHistory.length; i++){
+    if(statesHistory[i].extendedCount>=minExtended) c++
+  }
+  return c
+}
+
+const statesHistory=[]
+
+/* Interfaz */
+const modeSel=document.getElementById('mode')
+const targetSel=document.getElementById('target')
+const goalText=document.getElementById('goalText')
+const logEl=document.getElementById('log')
+const camChip=document.getElementById('camStatus')
+const handChip=document.getElementById('handStatus')
+const resChip=document.getElementById('resultStatus')
+
+const TARGETS={
+  dactilologia:['A','B','C','D','E','F','G','H','I','K','L','M','N','Ñ','O','P','Q','R','S','T','U','V','W','X','Y','Z'],
+  numeros:['1','2','3','4','5'],
+  saludos:['Hola','Adiós','Gracias','Por favor'],
+}
+function refreshTargets(){
+  targetSel.innerHTML=''
+  TARGETS[modeSel.value].forEach(t=>{
+    const o=document.createElement('option');o.value=t;o.textContent=t;targetSel.appendChild(o)
+  })
+  goalText.textContent=`Objetivo: ${targetSel.value}`
+}
+modeSel.addEventListener('change',refreshTargets)
+targetSel.addEventListener('change',()=>goalText.textContent=`Objetivo: ${targetSel.value}`)
+refreshTargets()
+
+/* Cámara + MediaPipe */
+const video=document.getElementById('video')
+const canvas=document.getElementById('canvas')
+const ctx=canvas.getContext('2d')
+
+const hands = new Hands({locateFile:(f)=>`https://cdn.jsdelivr.net/npm/@mediapipe/hands/${f}`})
+hands.setOptions({
+  maxNumHands:1,
+  modelComplexity:1,
+  minDetectionConfidence:0.6,
+  minTrackingConfidence:0.6
+})
+hands.onResults(onResults)
+
+let camera=null
+document.getElementById('btnStart').onclick=async()=>{
+  camera = new Camera(video, {
+    onFrame: async()=>{ await hands.send({image: video}) },
+    width: 960, height: 540
+  })
+  await camera.start()
+  camChip.className='chip ok'; camChip.textContent='Cámara: activa'
+}
+document.getElementById('btnStop').onclick=()=>{
+  if(camera) camera.stop()
+  camChip.className='chip'; camChip.textContent='Cámara: inactiva'
+}
+document.getElementById('btnDL').onclick=()=>{
+  const blob=new Blob([JSON.stringify(collected, null, 2)],{type:'application/json'})
+  const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='landmarks.json'; a.click()
+}
+
+const collected=[]
+
+function onResults(res){
+  canvas.width=video.videoWidth||960
+  canvas.height=video.videoHeight||540
+  ctx.clearRect(0,0,canvas.width,canvas.height)
+  if(res.multiHandLandmarks && res.multiHandLandmarks.length){
+    const lm=res.multiHandLandmarks[0]
+    drawConnectors(ctx,lm,HAND_CONNECTIONS,{color:'#55ffe0',lineWidth:3})
+    drawLandmarks(ctx,lm,{color:'#fff',lineWidth:1})
+    handChip.className='chip ok'; handChip.textContent='Mano: detectada'
+    processFrame(lm)
+  } else {
+    handChip.className='chip'; handChip.textContent='Mano: —'
+    statesHistory.push({extendedCount:0})
+    if(statesHistory.length>120) statesHistory.shift()
+  }
+}
+
+function processFrame(lm){
+  // normaliza para motion buffer (usamos muñeca como referencia y escala por distancia a MCP índice)
+  const base = v(lm[0])
+  const scale = dist(lm[0], lm[5]) + 1e-6
+  const ref = { x:(lm[8].x-base.x)/scale, y:(lm[8].y-base.y)/scale }
+  addMotion(ref)
+
+  // contar dedos extendidos
+  const fs=fingerStates(lm)
+  const extendedCount = ['thumb','index','middle','ring','pinky'].reduce((a,k)=>a+(fs[k]?1:0),0)
+  statesHistory.push({extendedCount})
+  if(statesHistory.length>120) statesHistory.shift()
+
+  const mode=modeSel.value
+  const target=targetSel.value
+  let detected=null, note=''
+  if(mode==='dactilologia'){
+    detected = classifyLetter(lm)
+    // Bloqueo: no aceptar "palma abierta" como letra
+    if(extendedCount>=4 && (!detected || !'BCEFOVW'.includes(detected))){
+      detected=null; note='Bloqueado: palma abierta no equivale a letra'
     }
-    new ResizeObserver(resizeCanvasToDisplaySize).observe(canvasElement);
+  } else if(mode==='numeros'){
+    detected = classifyNumber(lm)
+  } else if(mode==='saludos'){
+    detected = classifyGreeting()
+  }
 
-    // MediaPipe Hands
-    const hands = new Hands({ locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}` });
+  if(detected){
+    const ok = detected===target
+    resChip.className = ok ? 'chip ok' : 'chip warn'
+    resChip.textContent = 'Resultado: ' + detected + (ok?' ✓':' (otra)')
+  } else {
+    resChip.className='chip'
+    resChip.textContent='Resultado: —'
+  }
 
-    hands.setOptions({
-      maxNumHands: 1,
-      modelComplexity: 1,
-      minDetectionConfidence: 0.7,
-      minTrackingConfidence: 0.5
-    });
+  // log
+  const line = `[frame] ext=${extendedCount} target=${target} det=${detected||'—'} ${note}`
+  logEl.textContent = line + '\n' + logEl.textContent
+  if(logEl.textContent.length>5000) logEl.textContent = logEl.textContent.slice(0,5000)
 
-    hands.onResults(onResults);
+  // dataset opcional
+  collected.push({t:Date.now(), lm})
+  if(collected.length>1000) collected.shift()
+}
 
-    function startCamera(){
-      if (camera) return;
-      camera = new Camera(videoElement, {
-        onFrame: async () => { await hands.send({ image: videoElement }); },
-        width: 640,
-        height: 480
-      });
-      camera.start();
-      feedbackSet('bad', 'Detectando...');
-    }
+function classifyNumber(lm){
+  const f=fingerStates(lm)
+  const e=(k)=>f[k]
+  // palma hacia adentro: índice MCP más cerca de cámara que tips => aquí omitimos por simplicidad
+  if(e('index') && !e('middle') && !e('ring') && !e('pinky') && !e('thumb')) return '1'
+  if(e('index') && e('middle') && !e('ring') && !e('pinky') && !e('thumb')) return '2'
+  // 3 en LSB: índice+medio+pulgar
+  if(e('index') && e('middle') && !e('ring') && !e('pinky') && e('thumb')) return '3'
+  if(e('index') && e('middle') && e('ring') && !e('pinky') && !e('thumb')) return '4'
+  if(e('index') && e('middle') && e('ring') && e('pinky') && !e('thumb')) return '5'
+  return null
+}
 
-    async function stopCamera(){
-      if (!camera) return;
-      await camera.stop();
-      camera = null;
-      feedbackSet('bad', 'Cámara detenida');
-      canvasCtx.clearRect(0,0,canvasElement.width,canvasElement.height);
-      lastResultEl.textContent = 'No hay datos aún.';
-      lastLandmarks = null;
-    }
-
-    document.getElementById('btnStart').addEventListener('click', startCamera);
-    document.getElementById('btnStop').addEventListener('click', stopCamera);
-
-    document.getElementById('btnDownload').addEventListener('click', ()=>{
-      if(!lastLandmarks) return alert('No hay landmarks guardados aún. Inicia la cámara y haz un gesto.');
-      const data = {timestamp: Date.now(), landmarks: lastLandmarks};
-      const blob = new Blob([JSON.stringify(data, null, 2)], {type:'application/json'});
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a'); a.href = url; a.download = 'landmarks-lsb-sample.json'; a.click();
-      URL.revokeObjectURL(url);
-    });
-
-    function feedbackSet(type, text){
-      feedbackEl.className = 'status ' + (type === 'ok' ? 'ok' : 'bad');
-      feedbackEl.textContent = text;
-    }
-
-    function onResults(results){
-      // Redimensiona el lienzo de dibujo de salida
-      canvasCtx.save();
-      canvasCtx.clearRect(0,0,canvasElement.width,canvasElement.height);
-      canvasCtx.drawImage(results.image, 0, 0, canvasElement.width, canvasElement.height);
-
-      if(results.multiHandLandmarks && results.multiHandLandmarks.length > 0){
-        const lm = results.multiHandLandmarks[0];
-
-        // Dibujo
-        drawConnectors(canvasCtx, lm, HAND_CONNECTIONS, {color: '#00FFD1', lineWidth:2});
-        drawLandmarks(canvasCtx, lm, {color: '#FF007C', lineWidth:1});
-
-        // Clasificación por heurística
-        const classification = classifyHand(lm, canvasElement.width, canvasElement.height);
-        lastLandmarks = lm.map(p => ({x:p.x, y:p.y, z:p.z}));
-        const info = {
-          class: classification.label,
-          score: Number(classification.score.toFixed(2)),
-          extendedFingers: classification.extended
-        };
-        lastResultEl.textContent = JSON.stringify(info, null, 2);
-
-        if(classification.label === 'palma_abierta'){
-          feedbackSet('ok', '¡Correcto — palma abierta! (simulando "hola")');
-        } else {
-          feedbackSet('bad', 'Intenta de nuevo — no detecto palma abierta');
-        }
-      } else {
-        lastResultEl.textContent = 'No se detecta mano.';
-        feedbackSet('bad', 'Buscando mano…');
-      }
-
-      canvasCtx.restore();
-    }
-
-    // Heurística: dedos extendidos si tip está más lejos de la muñeca que su PIP
-    function classifyHand(landmarks, width, height){
-      const pts = landmarks.map(p => ({x: p.x * width, y: p.y * height, z: p.z}));
-      const wrist = pts[0];
-      const tipIdx = [4,8,12,16,20];
-      const pipIdx = [2,6,10,14,18];
-      let extended = 0;
-
-      for(let i=0;i<5;i++){
-        const tip = pts[tipIdx[i]];
-        const pip = pts[pipIdx[i]];
-        const dTip = Math.hypot(tip.x - wrist.x, tip.y - wrist.y);
-        const dPip = Math.hypot(pip.x - wrist.x, pip.y - wrist.y);
-        if(dTip > dPip * 1.05) extended++;
-      }
-
-      const label = extended >= 4 ? 'palma_abierta' : (extended === 0 ? 'puño' : 'parcial');
-      const score = Math.min(1, extended/5);
-      return {label, score, extended};
-    }
-  </script>
+function classifyGreeting(){
+  if(detectHola()) return 'Hola'
+  if(detectAdios()) return 'Adiós'
+  if(detectGracias()) return 'Gracias'
+  if(detectPorFavor()) return 'Por favor'
+  return null
+}
+</script>
 </body>
 </html>
